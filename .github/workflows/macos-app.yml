@@ -71,6 +71,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Download app archives
         uses: actions/download-artifact@v4
         with:
@@ -81,6 +84,7 @@ jobs:
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -105,6 +109,7 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --target "$GITHUB_SHA" \
               --title "$GITHUB_REF_NAME" \
               --notes "$notes"
           fi
