@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Callable
 from typing import Any, cast
@@ -19,6 +20,7 @@ QStatusBar = QtWidgets.QStatusBar
 QScrollArea = QtWidgets.QScrollArea
 QWidget = QtWidgets.QWidget
 
+from spektrafilm_gui.i18n import display_text, tr
 from spektrafilm_gui.theme import APP_STYLE_SHEET
 from spektrafilm_gui.theme_palette import (
     GRAY_0,
@@ -338,35 +340,35 @@ def _build_viewer_panel(
     status_bar.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
     status_layout.addWidget(status_bar, 1)
 
-    rotate_ccw_button = QPushButton('ccw rotate')
+    rotate_ccw_button = QPushButton(display_text('ccw rotate'))
     rotate_ccw_button.setObjectName('rotateCcwButton')
     if on_rotate_ccw is not None:
         rotate_ccw_button.clicked.connect(on_rotate_ccw)
 
-    rotate_cw_button = QPushButton('cw rotate')
+    rotate_cw_button = QPushButton(display_text('cw rotate'))
     rotate_cw_button.setObjectName('rotateCwButton')
     if on_rotate_cw is not None:
         rotate_cw_button.clicked.connect(on_rotate_cw)
 
     zoom_100_button = QPushButton('100%')
     zoom_100_button.setObjectName('zoom100Button')
-    zoom_100_button.setToolTip('Pixel of the screen mapped 1 to 1 to the image pixel')
+    zoom_100_button.setToolTip(tr('Pixel of the screen mapped 1 to 1 to the image pixel'))
     if on_zoom_100 is not None:
         zoom_100_button.clicked.connect(on_zoom_100)
 
     zoom_200_button = QPushButton('200%')
     zoom_200_button.setObjectName('zoom200Button')
-    zoom_200_button.setToolTip('2 screen pixels mapped to 1 image pixel')
+    zoom_200_button.setToolTip(tr('2 screen pixels mapped to 1 image pixel'))
     if on_zoom_200 is not None:
         zoom_200_button.clicked.connect(on_zoom_200)
 
     zoom_400_button = QPushButton('400%')
     zoom_400_button.setObjectName('zoom400Button')
-    zoom_400_button.setToolTip('4 screen pixels mapped to 1 image pixel')
+    zoom_400_button.setToolTip(tr('4 screen pixels mapped to 1 image pixel'))
     if on_zoom_400 is not None:
         zoom_400_button.clicked.connect(on_zoom_400)
 
-    home_button = QPushButton('reset view')
+    home_button = QPushButton(display_text('reset view'))
     home_button.setObjectName('homeViewButton')
     if on_home_view is not None:
         home_button.clicked.connect(on_home_view)
@@ -416,13 +418,13 @@ def build_controls_panel(viewer: napari.Viewer, widgets: WidgetBundle) -> QWidge
                 widgets.output,
             ),
         ),
-        'MAIN',
+        tr('MAIN'),
     )
     panel.addTab(
         _wrap_scrollable(_build_controls_tab(widgets.halation, widgets.couplers, widgets.grain, widgets.camera_diffusion)),
-        'FILM',
+        tr('FILM'),
     )
-    panel.addTab(_wrap_scrollable(_build_controls_tab(widgets.chemistry, widgets.glare, widgets.preflashing, widgets.enlarger_diffusion)), 'PRINT')
+    panel.addTab(_wrap_scrollable(_build_controls_tab(widgets.chemistry, widgets.glare, widgets.preflashing, widgets.enlarger_diffusion)), tr('PRINT'))
     panel.addTab(
         _wrap_scrollable(
             _build_controls_tab(
@@ -433,7 +435,7 @@ def build_controls_panel(viewer: napari.Viewer, widgets: WidgetBundle) -> QWidge
                 widgets.special,
             ),
         ),
-        'ADVANCED',
+        tr('ADVANCED'),
     )
 
     napari_layers_content = QtWidgets.QWidget()
@@ -453,7 +455,7 @@ def build_controls_panel(viewer: napari.Viewer, widgets: WidgetBundle) -> QWidge
                 CollapsibleSection('napari layers', napari_layers_content, expanded=False),
             ),
         ),
-        'CONFIG',
+        tr('CONFIG'),
     )
 
     container = QtWidgets.QWidget()
@@ -479,7 +481,8 @@ def build_main_window(
 
     main_window = AppMainWindow()
     main_window.setWindowTitle('spektrafilm')
-    main_window.setWindowIcon(QIcon())
+    icon_path = Path(__file__).resolve().parent / 'assets' / 'app_icon.png'
+    main_window.setWindowIcon(QIcon(str(icon_path)) if icon_path.is_file() else QIcon())
     main_window.resize(DEFAULT_CONTROLS_PANEL_WIDTH + DEFAULT_VIEWER_SPLITTER_WIDTH, 980)
     main_window.setFont(platform_default_font())
     main_window.setStyleSheet(APP_STYLE_SHEET)
@@ -513,7 +516,7 @@ def build_main_window(
 
     main_window.setCentralWidget(central)
     _request_dark_title_bar(main_window)
-    main_window.statusBar().showMessage('ready', 3000)
+    main_window.statusBar().showMessage(tr('ready'), 3000)
     return main_window
 
 
@@ -527,7 +530,7 @@ def set_status(viewer: napari.Viewer, message: str, *, timeout_ms: int = 5000) -
         return
     status_bar = host_window.statusBar() if hasattr(host_window, 'statusBar') else None
     if status_bar is not None:
-        status_bar.showMessage(message, timeout_ms)
+        status_bar.showMessage(tr(message), timeout_ms)
 
 
 def show_viewer_window(viewer: napari.Viewer) -> None:

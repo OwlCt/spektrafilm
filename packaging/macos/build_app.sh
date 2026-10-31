@@ -203,7 +203,17 @@ rm -rf \
   "$ENV/lib/python3.13/site-packages/dask/tests" \
   || true
 
+log "drawing the app icon"
+mkdir -p "$WORK/spektrafilm.iconset" "$APP/Contents/Resources"
+"$PY" packaging/macos/make_icon.py --iconset "$WORK/spektrafilm.iconset" --png "$WORK/app_icon.png"
+iconutil -c icns "$WORK/spektrafilm.iconset" -o "$APP/Contents/Resources/spektrafilm.icns"
+cp "$WORK/app_icon.png" "$APP/Contents/Resources/app_icon.png"
+SITE_ASSETS="$("$PY" -c 'import pathlib, spektrafilm_gui; print(pathlib.Path(spektrafilm_gui.__file__).resolve().parent / "assets")')"
+mkdir -p "$SITE_ASSETS"
+cp "$WORK/app_icon.png" "$SITE_ASSETS/app_icon.png"
+
 log "in-place import smoke (before packing)"
+export SPEKTRAFILM_PREVIEW_DIR="$ROOT/dist/preview"
 export QT_API=pyside6
 export QT_QPA_PLATFORM=offscreen
 export MPLBACKEND=Agg
@@ -241,6 +251,8 @@ cat > "$APP/Contents/Info.plist" << PLIST
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
+  <string>spektrafilm</string>
+  <key>CFBundleIconFile</key>
   <string>spektrafilm</string>
   <key>CFBundleIdentifier</key>
   <string>org.spektrafilm.desktop</string>

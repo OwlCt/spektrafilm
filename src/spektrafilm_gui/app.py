@@ -303,6 +303,9 @@ def create_app() -> GuiApp:
     )
 
 def main():
+    from spektrafilm_gui.i18n import configure_napari_language
+
+    configure_napari_language()
     napari = import_module('napari')
     app = create_app()
     show_viewer_window(app.viewer)

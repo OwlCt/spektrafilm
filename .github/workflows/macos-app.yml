@@ -54,6 +54,15 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload UI preview
+        if: hashFiles('dist/preview/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: spektrafilm-ui-preview-${{ matrix.arch }}
+          path: dist/preview/*
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload app archive
         uses: actions/upload-artifact@v4
         with:
@@ -95,16 +104,21 @@ jobs:
           fi
           ls -lh "${files[@]}"
           notes=$(printf '%s\n' \
-            'macOS builds of the Spektrafilm desktop app.' \
+            'macOS 版 Spektrafilm 桌面应用。' \
             '' \
-            '- `Spektrafilm-macos-arm64.zip` — Apple Silicon' \
-            '- `Spektrafilm-macos-x86_64.zip` — Intel' \
+            '- 新增应用图标（胶片画格与光谱）。' \
+            '- 界面支持简体中文。系统语言为中文时默认使用简体中文，也可用环境变量 SPEKTRAFILM_LANG=zh_CN 或 en 切换。napari 自身菜单仍为英文，因为没有随 napari 0.6 发布的官方简体中文语言包。' \
+            '- 需要 macOS 14 或更高版本。' \
+            '- 应用未经 Apple 公证。首次打开请在终端执行：' \
             '' \
-            'The app is ad-hoc signed and not notarized. After unzipping, move Spektrafilm.app where you want to keep it, then clear quarantine:' \
+            '    xattr -cr /Applications/Spektrafilm.app' \
             '' \
-            '    xattr -cr /path/to/Spektrafilm.app' \
+            '  或在「系统设置 > 隐私与安全性」中选择「仍要打开」。' \
             '' \
-            'You can also right-click the app and choose Open. The first launch rewrites paths inside the bundle and compiles Numba kernels, so it is slower than later launches. See the README section "macOS app".')
+            '- Spektrafilm-macos-arm64.zip：Apple 芯片' \
+            '- Spektrafilm-macos-x86_64.zip：Intel' \
+            '' \
+            '第一次启动会改写安装路径、重新签名，并编译 Numba 内核，所以会比之后的启动慢。请先把 Spektrafilm.app 放到最终位置再打开。')
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else

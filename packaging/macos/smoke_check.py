@@ -105,6 +105,104 @@ def check_pipeline_and_gui() -> None:
     print(f"smoke: entry {spektrafilm_gui.app.main.__name__} api {spektrafilm.runtime.api.__name__}", flush=True)
 
 
+def check_chinese_ui() -> None:
+    from pathlib import Path
+
+    os.environ["SPEKTRAFILM_LANG"] = "zh_CN"
+    from spektrafilm_gui.i18n import configure_napari_language, display_text, tr
+    from spektrafilm_gui.param_manifest import (
+        ALL_MANIFESTS,
+        DISPLAY_PANEL_FIELDS,
+        INPUT_IMAGE_FIELDS,
+        SIMULATION_FIELDS,
+        SPECIAL_FIELDS,
+    )
+    from spektrafilm_gui.widgets import create_widget_bundle
+    from qtpy.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+
+    missing: list[str] = []
+    seen: set[str] = set()
+    texts: list[str] = []
+    for manifest in ALL_MANIFESTS:
+        texts.append(manifest.title)
+        for spec in manifest.fields:
+            texts.append(spec.label or spec.leaf.replace("_", " "))
+            if spec.tooltip:
+                texts.append(spec.tooltip)
+    for spec in (*INPUT_IMAGE_FIELDS, *SPECIAL_FIELDS, *DISPLAY_PANEL_FIELDS, *SIMULATION_FIELDS):
+        texts.append(spec.label or spec.leaf.replace("_", " "))
+        if spec.tooltip:
+            texts.append(spec.tooltip)
+    for text in texts:
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        if tr(text) == text:
+            missing.append(text)
+    total = len(seen)
+    print(f"smoke: manifest strings translated {total - len(missing)}/{total}", flush=True)
+    if missing:
+        preview = ", ".join(missing[:12])
+        raise RuntimeError(f"{len(missing)} manifest strings are still English: {preview}")
+
+    napari_language = configure_napari_language()
+    print(
+        "smoke: napari language pack",
+        napari_language or "not installed; napari menus stay English",
+        flush=True,
+    )
+
+    app = QApplication.instance() or QApplication([])
+    bundle = create_widget_bundle()
+    labels = [label.text() for label in bundle.load_raw.findChildren(QLabel)]
+    if "白平衡" not in labels:
+        raise RuntimeError(f"expected translated white-balance label, got {labels}")
+    if bundle.load_raw.reprocess_button.text() != "重新处理 RAW":
+        raise RuntimeError(f"unexpected reprocess button text {bundle.load_raw.reprocess_button.text()!r}")
+    bundle.load_raw.white_balance.setCurrentText("tungsten")
+    if bundle.load_raw.white_balance.value != "tungsten":
+        raise RuntimeError("white-balance value was translated")
+    if bundle.simulation.preview_button.text() != "预览":
+        raise RuntimeError(f"unexpected preview button text {bundle.simulation.preview_button.text()!r}")
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(12, 12, 12, 12)
+    for widget in (bundle.filepicker, bundle.load_raw, bundle.simulation, bundle.halation):
+        layout.addWidget(widget)
+    host.setStyleSheet("background: #1c1c1c; color: #f2f2f2;")
+    host.setFixedWidth(520)
+    host.adjustSize()
+    host.show()
+    app.processEvents()
+
+    preview_dir = os.environ.get("SPEKTRAFILM_PREVIEW_DIR")
+    if preview_dir:
+        destination = Path(preview_dir)
+        destination.mkdir(parents=True, exist_ok=True)
+        pixmap = host.grab()
+        if pixmap.isNull():
+            print("smoke: offscreen grab returned a null pixmap", flush=True)
+        else:
+            image_path = destination / "zh_ui.png"
+            pixmap.save(str(image_path))
+            print(f"smoke: wrote {image_path} {pixmap.width()}x{pixmap.height()}", flush=True)
+        icon = Path(__import__("spektrafilm_gui").__file__).resolve().parent / "assets" / "app_icon.png"
+        if icon.is_file():
+            target = destination / "app_icon.png"
+            target.write_bytes(icon.read_bytes())
+            print(f"smoke: wrote {target}", flush=True)
+
+    os.environ["SPEKTRAFILM_LANG"] = "en"
+    if display_text("Couplers") != "couplers":
+        raise RuntimeError("English labels no longer match the upstream lowercase UI")
+    if display_text("PREVIEW", preserve_case=True) != "PREVIEW":
+        raise RuntimeError("English preserve-case buttons changed")
+    if tr("Couplers") != "Couplers":
+        raise RuntimeError("English tr() translated a string")
+
+
 def main() -> None:
     print(
         f"smoke: python {sys.version.split()[0]} machine={os.uname().machine} "
@@ -114,6 +212,7 @@ def main() -> None:
     step("native modules and numba JIT", check_native_modules)
     step("package data", check_package_data)
     step("pipeline, Qt, and napari imports", check_pipeline_and_gui)
+    step("Simplified Chinese labels", check_chinese_ui)
     print("SMOKE_OK", flush=True)
 
 

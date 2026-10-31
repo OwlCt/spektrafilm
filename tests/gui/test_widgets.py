@@ -180,7 +180,7 @@ def _make_gui_config_section(monkeypatch):
 
 
 def test_load_raw_section_adds_reprocess_button_after_raw_settings(monkeypatch) -> None:
-    del monkeypatch
+    monkeypatch.setenv('SPEKTRAFILM_LANG', 'en')
     section, _emitted = _make_load_raw_section()
 
     assert section.file_path.isReadOnly() is True
@@ -499,7 +499,8 @@ def test_widget_spec_decimals_configure_float_editors(monkeypatch) -> None:
     assert [editor.decimals() for editor in float_pair_editor.editors] == [3, 3]
 
 
-def test_simulation_section_profile_use_badges_follow_selected_profiles() -> None:
+def test_simulation_section_profile_use_badges_follow_selected_profiles(monkeypatch) -> None:
+    monkeypatch.setenv('SPEKTRAFILM_LANG', 'en')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from qtpy import QtWidgets
 
@@ -513,3 +514,26 @@ def test_simulation_section_profile_use_badges_follow_selected_profiles() -> Non
     assert widget_editors_module.ProfileEnumEditor.display_text_for_value('kodak_portra_400') == 'still / kodak_portra_400'
     assert widget_editors_module.ProfileEnumEditor.display_text_for_value('kodak_vision3_50d') == 'cine / kodak_vision3_50d'
     assert widget_editors_module.ProfileEnumEditor.display_text_for_value('kodak_2393') == 'cine / kodak_2393'
+
+
+def test_chinese_ui_translates_labels_and_keeps_profile_values(monkeypatch) -> None:
+    monkeypatch.setenv('SPEKTRAFILM_LANG', 'zh_CN')
+    monkeypatch.setenv('QT_QPA_PLATFORM', 'offscreen')
+    from qtpy import QtWidgets
+
+    from spektrafilm_gui.i18n import display_text, tr
+
+    _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    section = widgets_module.LoadRawSection()
+    labels = [label.text() for label in section.findChildren(QtWidgets.QLabel)]
+    assert tr('White balance') == '白平衡'
+    assert '白平衡' in labels
+    assert section.file_path.placeholderText() == '未选择 RAW'
+    assert section.reprocess_button.text() == '重新处理 RAW'
+    assert isinstance(section.white_balance, widget_editors_module.EnumEditor)
+    assert section.white_balance.itemText(0) == 'as_shot'
+    section.white_balance.setCurrentText('daylight')
+    assert section.white_balance.value == 'daylight'
+    monkeypatch.setenv('SPEKTRAFILM_LANG', 'en')
+    assert display_text('Couplers') == 'couplers'
+    assert display_text('PREVIEW', preserve_case=True) == 'PREVIEW'

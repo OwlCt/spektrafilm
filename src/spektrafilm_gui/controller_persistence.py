@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from spektrafilm_gui.i18n import tr
+
 
 def save_current_as_default(
     *,
@@ -18,7 +20,11 @@ def save_current_as_default(
     try:
         save_default_gui_state_fn(gui_state)
     except (OSError, ValueError) as exc:
-        message_box.critical(dialog_parent_fn(viewer), 'Save current as default', f'Failed to save default GUI state.\n\n{exc}')
+        message_box.critical(
+            dialog_parent_fn(viewer),
+            tr('Save current as default'),
+            tr('Failed to save default GUI state.\n\n{error}').format(error=exc),
+        )
         return
 
     set_status_fn(viewer, 'Saved current GUI state as the startup default')
@@ -37,9 +43,9 @@ def save_current_state_to_file(
 ) -> None:
     filepath, _ = file_dialog.get_save_file_name(
         dialog_parent_fn(viewer),
-        'Save GUI state',
+        tr('Save GUI state'),
         'gui_state.json',
-        'JSON (*.json)',
+        tr('JSON (*.json)'),
     )
     if not filepath:
         return
@@ -48,10 +54,14 @@ def save_current_state_to_file(
     try:
         save_gui_state_to_path_fn(gui_state, filepath)
     except (OSError, ValueError) as exc:
-        message_box.critical(dialog_parent_fn(viewer), 'Save GUI state', f'Failed to save GUI state.\n\n{exc}')
+        message_box.critical(
+            dialog_parent_fn(viewer),
+            tr('Save GUI state'),
+            tr('Failed to save GUI state.\n\n{error}').format(error=exc),
+        )
         return
 
-    set_status_fn(viewer, f'Saved GUI state to {filepath}')
+    set_status_fn(viewer, tr('Saved GUI state to {path}').format(path=filepath))
 
 
 def load_state_from_file(
@@ -68,9 +78,9 @@ def load_state_from_file(
 ) -> None:
     filepath, _ = file_dialog.get_open_file_name(
         dialog_parent_fn(viewer),
-        'Load GUI state',
+        tr('Load GUI state'),
         '',
-        'JSON (*.json)',
+        tr('JSON (*.json)'),
     )
     if not filepath:
         return
@@ -78,12 +88,16 @@ def load_state_from_file(
     try:
         gui_state = load_gui_state_from_path_fn(filepath)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        message_box.critical(dialog_parent_fn(viewer), 'Load GUI state', f'Failed to load GUI state.\n\n{exc}')
+        message_box.critical(
+            dialog_parent_fn(viewer),
+            tr('Load GUI state'),
+            tr('Failed to load GUI state.\n\n{error}').format(error=exc),
+        )
         return
 
     apply_gui_state_fn(gui_state, widgets=widgets)
     sync_canvas_background_fn()
-    set_status_fn(viewer, f'Loaded GUI state from {filepath}')
+    set_status_fn(viewer, tr('Loaded GUI state from {path}').format(path=filepath))
 
 
 def restore_factory_default(
@@ -103,8 +117,8 @@ def restore_factory_default(
     except OSError as exc:
         message_box.critical(
             dialog_parent_fn(viewer),
-            'Restore factory default',
-            f'Failed to clear the saved startup default.\n\n{exc}',
+            tr('Restore factory default'),
+            tr('Failed to clear the saved startup default.\n\n{error}').format(error=exc),
         )
         return
 

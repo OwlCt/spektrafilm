@@ -12,12 +12,13 @@ from spektrafilm_gui.theme_palette import (
     SIZE_SECTION_FRAME_MARGIN,
     SIZE_SECTION_STACK_SPACING,
 )
+from spektrafilm_gui.i18n import display_text
 from spektrafilm_gui.icons import HEADER_ICON_SIZE, section_header_icon
 from spektrafilm_gui.theme import resolve_theme_qcolor
 
 
 def normalize_ui_text(text: str) -> str:
-    return text.lower()
+    return display_text(text)
 
 
 def platform_default_font() -> QtGui.QFont:

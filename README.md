@@ -336,6 +336,13 @@ Workflow artifacts are wrapped in an extra zip by GitHub. Unzip until you see
 `Spektrafilm.app`. Release downloads are the archive itself. macOS 14 or newer
 is required.
 
+The app icon is a film gate with a spectral frame. The GUI follows the system
+language: a Chinese macOS opens it in Simplified Chinese. Set
+`SPEKTRAFILM_LANG=en` or `SPEKTRAFILM_LANG=zh_CN` to override that. Film stock
+names and saved parameter values stay in their original identifiers. napari's
+own menus stay in English; napari 0.6 only translates when a separate language
+pack is installed, and there is no official Simplified Chinese pack.
+
 The build is ad-hoc signed and not notarized, so Gatekeeper treats a fresh
 download as untrusted. Move `Spektrafilm.app` to the folder where you want to
 keep it, then either right-click the app and choose **Open**, or clear the

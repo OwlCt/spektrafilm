@@ -14,6 +14,7 @@ QStyledItemDelegate = QtWidgets.QStyledItemDelegate
 QStylePainter = QtWidgets.QStylePainter
 
 from spektrafilm.profiles.io import load_profile
+from spektrafilm_gui.i18n import tr
 from spektrafilm_gui.theme_palette import (
     ACCENT_COLOR_TEXT,
     ACCENT_COLOR_TEXT_SECONDARY,
@@ -60,7 +61,7 @@ def _draw_profile_display_text(
         return
 
     font_metrics = QtGui.QFontMetrics(font)
-    prefix_text = f'{profile_use} '
+    prefix_text = f'{tr(profile_use)} '
     slash_text = '/ '
     prefix_width = font_metrics.horizontalAdvance(prefix_text)
     slash_width = font_metrics.horizontalAdvance(slash_text)
@@ -113,7 +114,7 @@ class ProfileEnumEditor(QtWidgets.QComboBox):
         profile_use, _color = _profile_use_text_and_color(value)
         if not profile_use:
             return value
-        return f'{profile_use} / {value}'
+        return f'{tr(profile_use)} / {value}'
 
     @property
     def value(self) -> str:
@@ -255,10 +256,32 @@ class BoolEditor(QtWidgets.QCheckBox):
         )
 
 
+class _ChoiceItemDelegate(QStyledItemDelegate):
+    """Paint a translated label while the item text stays the stored value."""
+
+    def paint(self, painter, option, index) -> None:  # noqa: N802 - Qt API name
+        style_option = QtWidgets.QStyleOptionViewItem(option)
+        self.initStyleOption(style_option, index)
+        value = index.data(QtCore.Qt.DisplayRole) or ''
+        style_option.text = tr(str(value))
+        widget = style_option.widget
+        style = widget.style() if widget is not None else QtWidgets.QApplication.style()
+        style.drawControl(QStyle.CE_ItemViewItem, style_option, painter, widget)
+
+
 class EnumEditor(QtWidgets.QComboBox):
     def __init__(self, values: list[str]):
         super().__init__()
         self.addItems(values)
+        self.setItemDelegate(_ChoiceItemDelegate(self))
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        del event
+        painter = QStylePainter(self)
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        option.currentText = tr(self.currentText())
+        painter.drawComplexControl(QStyle.CC_ComboBox, option)
 
     @property
     def value(self) -> str:

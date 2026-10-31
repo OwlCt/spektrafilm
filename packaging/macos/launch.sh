@@ -53,6 +53,18 @@ elif [[ "$(cat "$PREFIX_FILE")" != "$CURRENT" ]]; then
   /bin/bash "$RES/codesign_bundle.sh" "$APP_DIR" || log "ad-hoc codesign reported errors; Gatekeeper may still warn"
 fi
 
+# Finder launches often have no LANG. Follow the macOS language list so a
+# Chinese system opens the GUI in Simplified Chinese unless SPEKTRAFILM_LANG
+# was set explicitly.
+if [[ -z "${SPEKTRAFILM_LANG:-}" ]]; then
+  apple_langs="$(defaults read -g AppleLanguages 2>/dev/null || true)"
+  case "$apple_langs" in
+    *zh-Hans*|*zh_CN*|*zh-CN*|*\"zh\"*)
+      export SPEKTRAFILM_LANG=zh_CN
+      ;;
+  esac
+fi
+
 export QT_API="${QT_API:-pyside6}"
 export PYTHONNOUSERSITE=1
 export PYTHONUNBUFFERED=1
