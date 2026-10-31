@@ -1,0 +1,110 @@
+name: macOS app
+
+# Builds a double-clickable Spektrafilm.app for Intel and Apple Silicon.
+# macos-13 (Intel) was removed in December 2025; macos-15-intel is the
+# native x86_64 hosted runner. macos-15 is Apple Silicon.
+
+on:
+  push:
+    branches:
+      - main
+      - 'cursor/**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+          - runner: macos-15
+            arch: arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Spektrafilm.app
+        run: bash packaging/macos/build_app.sh
+
+      - name: Zip the app
+        run: |
+          set -euo pipefail
+          ARCHIVE="dist/Spektrafilm-macos-${{ matrix.arch }}.zip"
+          ditto -c -k --keepParent dist/Spektrafilm.app "$ARCHIVE"
+          ls -lh "$ARCHIVE"
+          {
+            echo "### Spektrafilm macOS ${{ matrix.arch }}"
+            echo ""
+            echo '```'
+            ls -lh "$ARCHIVE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload app archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: spektrafilm-macos-${{ matrix.arch }}
+          path: dist/Spektrafilm-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download app archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spektrafilm-macos-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.zip)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "no zip archives to attach" >&2
+            exit 1
+          fi
+          ls -lh "${files[@]}"
+          notes=$(printf '%s\n' \
+            'macOS builds of the Spektrafilm desktop app.' \
+            '' \
+            '- `Spektrafilm-macos-arm64.zip` — Apple Silicon' \
+            '- `Spektrafilm-macos-x86_64.zip` — Intel' \
+            '' \
+            'The app is ad-hoc signed and not notarized. After unzipping, move Spektrafilm.app where you want to keep it, then clear quarantine:' \
+            '' \
+            '    xattr -cr /path/to/Spektrafilm.app' \
+            '' \
+            'You can also right-click the app and choose Open. The first launch rewrites paths inside the bundle and compiles Numba kernels, so it is slower than later launches. See the README section "macOS app".')
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "$notes"
+          fi

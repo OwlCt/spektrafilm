@@ -317,6 +317,44 @@ For one-off runs with `uvx`, use `--from` as shown above.
 > On Windows PowerShell and on macOS zsh, quote the brackets to prevent
 > shell glob expansion: `pip install -e ".[dev]"`.
 
+## macOS app
+
+GitHub Actions builds a double-clickable `Spektrafilm.app` for Apple Silicon
+and for Intel. The workflow is [`.github/workflows/macos-app.yml`](.github/workflows/macos-app.yml).
+It runs on pushes to `main` and `cursor/**`, on tags named `v*`, and when
+started manually. A `v*` tag also publishes a GitHub Release with both builds
+attached.
+
+Download the zip that matches your Mac:
+
+| Mac | Archive |
+|---|---|
+| Apple Silicon (M1 or later) | `Spektrafilm-macos-arm64.zip` |
+| Intel | `Spektrafilm-macos-x86_64.zip` |
+
+Workflow artifacts are wrapped in an extra zip by GitHub. Unzip until you see
+`Spektrafilm.app`. Release downloads are the archive itself. macOS 14 or newer
+is required.
+
+The build is ad-hoc signed and not notarized, so Gatekeeper treats a fresh
+download as untrusted. Move `Spektrafilm.app` to the folder where you want to
+keep it, then either right-click the app and choose **Open**, or clear the
+quarantine flag in Terminal:
+
+```bash
+xattr -cr /path/to/Spektrafilm.app
+```
+
+Clearing quarantine is the reliable option. While the quarantine flag is set,
+macOS may run the app from a read-only translocated path, and the first launch
+needs to write into the bundle.
+
+The first launch rewrites the embedded install prefix, ad-hoc signs the bundle
+again, and Numba compiles its kernels. That start is much slower than later
+ones. Put the app in its final folder before opening it. Moving it afterward
+works when the new path is not longer than the previous one; a longer path
+cannot be rewritten in place. `/Applications` is a safe choice.
+
 ## Testing
 
 Install the default package plus the dev tooling, then run the test suite:
