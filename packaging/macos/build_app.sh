@@ -91,7 +91,6 @@ rm -rf "$ENV"
   "matplotlib-base>=3.10,<3.11" \
   "pillow>=12.1,<12.2" \
   "rawpy>=0.26.1,<0.27" \
-  "pyfftw>=0.15,<0.16" \
   ca-certificates \
   certifi
 
@@ -101,7 +100,7 @@ log "conda prefix ready: $("$PY" -c 'import sys, numpy, numba, scipy, rawpy; pri
 log "checking conda-managed native packages before pip"
 "$PY" - << 'PY'
 import importlib.metadata as md
-required = ("numpy", "scipy", "numba", "llvmlite", "rawpy", "pyfftw", "scikit-image")
+required = ("numpy", "scipy", "numba", "llvmlite", "rawpy", "scikit-image")
 missing = []
 for name in required:
     try:
@@ -126,7 +125,6 @@ names = [
     "llvmlite",
     "scikit-image",
     "rawpy",
-    "pyfftw",
     "pillow",
     "matplotlib",
 ]
