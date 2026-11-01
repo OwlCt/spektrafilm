@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from qtpy import QtGui, QtWidgets
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QKeySequence, QShortcut
 
 if TYPE_CHECKING:
     import napari
@@ -54,6 +55,12 @@ class AppMainWindow(QMainWindow):
         if self._viewer_status_bar is not None:
             return self._viewer_status_bar
         return super().statusBar()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        event.accept()
+        from spektrafilm_gui.app import request_shutdown
+
+        request_shutdown()
 
 def _get_current_stylesheet() -> str:
     try:
@@ -170,6 +177,15 @@ def take_viewer_widget(viewer: napari.Viewer) -> QWidget:
 
     qt_window = getattr(viewer_window, '_qt_window', None)
     if qt_window is not None:
+        # The shell stays alive after its central widget moves into our window.
+        # Leave it hidden and out of Qt's quit count so closing Spektrafilm
+        # is the close of the last real window.
+        hide = getattr(qt_window, 'hide', None)
+        if callable(hide):
+            hide()
+        set_attribute = getattr(qt_window, 'setAttribute', None)
+        if callable(set_attribute):
+            set_attribute(Qt.WA_QuitOnClose, False)
         take_central_widget = getattr(qt_window, 'takeCentralWidget', None)
         if callable(take_central_widget):
             central_widget = take_central_widget()
@@ -523,9 +539,27 @@ def build_main_window(
     central_layout.addWidget(splitter, 1)
 
     main_window.setCentralWidget(central)
+    _install_quit_shortcuts(main_window)
     _request_dark_title_bar(main_window)
     main_window.statusBar().showMessage(tr('ready'), 3000)
     return main_window
+
+
+def _install_quit_shortcuts(main_window: QMainWindow) -> None:
+    sequences = [QKeySequence('Ctrl+Q')]
+    standard = getattr(QKeySequence, 'StandardKey', None)
+    if standard is not None:
+        sequences.append(QKeySequence(standard.Quit))
+    context = getattr(Qt, 'ApplicationShortcut', None)
+    if context is None:
+        context = Qt.ShortcutContext.ApplicationShortcut
+    shortcuts: list[QShortcut] = []
+    for sequence in sequences:
+        shortcut = QShortcut(sequence, main_window)
+        shortcut.setContext(context)
+        shortcut.activated.connect(main_window.close)
+        shortcuts.append(shortcut)
+    setattr(main_window, '_quit_shortcuts', shortcuts)
 
 
 def dialog_parent(viewer: napari.Viewer) -> QWidget | None:
