@@ -368,6 +368,29 @@ ones. Put the app in its final folder before opening it. Moving it afterward
 works when the new path is not longer than the previous one; a longer path
 cannot be rewritten in place. `/Applications` is a safe choice.
 
+Ctrl+Q (Cmd+Q on macOS) and closing the window both quit the process.
+
+## Windows and Linux apps
+
+The Windows download is `Spektrafilm-windows-x64.zip` or the Inno Setup
+installer `Spektrafilm-windows-x64-setup.exe`. Neither file is signed. If
+SmartScreen interrupts the launch, choose **More info** and then **Run anyway**.
+
+The Linux downloads are `Spektrafilm-linux-x86_64.tar.gz` (PyInstaller
+directory) and `Spektrafilm-linux-x86_64.AppImage`. Unpack the archive and run
+`Spektrafilm/Spektrafilm`, or mark the AppImage executable and run it. The
+directory and the AppImage both carry the xcb and EGL libraries Qt loads at
+runtime (`libEGL.so.1`, `libGL.so.1`, `libxcb-cursor.so.0`, and the related
+xcb/xkb libraries) plus a Noto CJK font so Simplified and Traditional Chinese
+are not drawn as boxes.
+
+On a machine where one of those libraries is still reported missing, or where
+fontconfig ignores the bundled font, install the system copies:
+
+```bash
+sudo apt install libegl1 libgl1 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 libxkbcommon-x11-0 fonts-noto-cjk
+```
+
 ## Testing
 
 Install the default package plus the dev tooling, then run the test suite:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import platform
 import struct
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -88,6 +89,118 @@ def check_package_data() -> None:
     if not any(True for _ in icc.iterdir()):
         raise RuntimeError("spektrafilm.data.icc is empty")
     print(f"smoke: {len(profiles)} profiles, asset {len(data)} bytes", flush=True)
+
+
+def check_napari_plugins() -> None:
+    import logging
+    from importlib.resources import files
+
+    messages: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    handler = _Capture()
+    handler.setLevel(logging.DEBUG)
+    loggers = [
+        logging.getLogger(),
+        logging.getLogger("npe2"),
+        logging.getLogger("npe2.manifest"),
+        logging.getLogger("npe2.manifest.schema"),
+        logging.getLogger("napari"),
+    ]
+    previous_levels = [logger.level for logger in loggers]
+    for logger in loggers:
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+    try:
+        manifest_text = files("napari_builtins").joinpath("builtins.yaml").read_text(encoding="utf-8")
+        if "napari.get_reader" not in manifest_text:
+            raise RuntimeError("napari_builtins/builtins.yaml is missing the builtin reader")
+        import napari_svg
+
+        if napari_svg.__file__ is None:
+            raise RuntimeError("napari_svg was imported from a namespace with no file")
+        import napari
+        from npe2.manifest.schema import PluginManifest
+
+        results = list(PluginManifest.discover())
+        print(f"smoke: napari {napari.__version__} manifests {len(results)}", flush=True)
+    finally:
+        for logger, level in zip(loggers, previous_levels, strict=True):
+            logger.removeHandler(handler)
+            logger.setLevel(level)
+
+    forbidden = (
+        "could not be imported",
+        "Cannot find module 'napari_svg'",
+        "Could not find file 'builtins.yaml'",
+    )
+    leaked = [line for line in messages if any(marker in line for marker in forbidden)]
+    if leaked:
+        raise RuntimeError("napari plugin discovery failed:\n" + "\n".join(leaked))
+
+    reader_registered = False
+    svg_registered = False
+    errors: list[str] = []
+    names: list[str] = []
+    for item in results:
+        manifest = item[0]
+        error = item[2]
+        if error is not None:
+            errors.append(str(error))
+            continue
+        if manifest is None:
+            continue
+        name = str(getattr(manifest, "name", ""))
+        names.append(name)
+        if "svg" in name:
+            svg_registered = True
+        contributions = getattr(manifest, "contributions", None)
+        commands = getattr(contributions, "commands", None) if contributions is not None else None
+        for command in commands or []:
+            if getattr(command, "id", "") == "napari.get_reader":
+                reader_registered = True
+    if errors:
+        raise RuntimeError("napari manifest import failed: " + " | ".join(errors[:8]))
+    if not reader_registered:
+        raise RuntimeError(f"napari builtin reader is not registered ({names})")
+    if not svg_registered:
+        raise RuntimeError(f"napari-svg is not registered ({names})")
+    print("smoke: napari builtin reader and napari-svg are registered", flush=True)
+
+
+def check_window_close_exits() -> None:
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["QT_API"] = "pyside6"
+    env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    env["QT_OPENGL"] = "software"
+    env["NUMBA_NUM_THREADS"] = "1"
+    env["PYTHONNOUSERSITE"] = "1"
+    env["SPEKTRAFILM_SKIP_WARMUP"] = "1"
+    env["SPEKTRAFILM_IN_QUIT_CHECK"] = "1"
+    env.setdefault("SPEKTRAFILM_CONFIG_DIR", tempfile.mkdtemp(prefix="spektrafilm-quit-"))
+    if getattr(sys, "frozen", False):
+        command = [sys.executable, "--quit-check"]
+    else:
+        command = [sys.executable, "-c", "from spektrafilm_gui.app import quit_check; quit_check()"]
+    print(f"smoke: quit check via {command[0]}", flush=True)
+    try:
+        completed = subprocess.run(command, env=env, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", "replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace")
+        raise RuntimeError("quit check still running after 600s\n" + (stdout + stderr)[-4000:]) from exc
+    output = (completed.stdout or "") + "\n" + (completed.stderr or "")
+    if completed.returncode != 0 or "QUIT_OK" not in (completed.stdout or "") or "LINGERING_THREADS" in output:
+        raise RuntimeError(f"quit check failed with {completed.returncode}\n" + output[-4000:])
+    print("smoke: closing the window ended the process", flush=True)
 
 
 def check_pipeline_and_gui() -> None:
@@ -274,8 +387,10 @@ def main() -> None:
     )
     step("native modules and numba JIT", check_native_modules)
     step("package data", check_package_data)
+    step("napari builtin plugins", check_napari_plugins)
     step("pipeline, Qt, and napari imports", check_pipeline_and_gui)
     step("Simplified Chinese labels", check_chinese_ui)
+    step("window close exits the process", check_window_close_exits)
     print("SMOKE_OK", flush=True)
 
 

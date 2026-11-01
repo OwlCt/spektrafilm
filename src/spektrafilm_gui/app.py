@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from importlib import import_module
+import os
+import threading
 from typing import Any, Callable, cast
 
 import numpy as np
@@ -25,6 +27,8 @@ QTimer = getattr(QtCore, 'QTimer')
 _background_warmup_started = False
 _background_warmup_scheduled = False
 _background_warmup_pool: Any | None = None
+_shutdown_requested = False
+_cancel_warmup = threading.Event()
 WARMUP_IMAGE_SHAPE = (16, 16, 3)
 
 @dataclass(slots=True)
@@ -58,8 +62,12 @@ def _warmup_launch_input_path(gui_state: object | None = None) -> None:
 
 
 def _warmup_full_gui() -> None:
+    if _cancel_warmup.is_set():
+        return
     gui_state = load_default_gui_state()
     warmup()
+    if _cancel_warmup.is_set():
+        return
 
     colour_module = import_module('colour')
     pil_image_module = import_module('PIL.Image')
@@ -71,6 +79,8 @@ def _warmup_full_gui() -> None:
     import_module('spektrafilm.utils.preview')
     import_module('spektrafilm.utils.raw_file_processor')
 
+    if _cancel_warmup.is_set():
+        return
     warmup_image = np.full(WARMUP_IMAGE_SHAPE, 0.18, dtype=np.float64)
     controller_runtime.prepare_input_color_preview_image(
         warmup_image,
@@ -79,9 +89,13 @@ def _warmup_full_gui() -> None:
         colour_module=colour_module,
     )
 
+    if _cancel_warmup.is_set():
+        return
     params = params_mapper.build_params_from_state(gui_state)
     simulator = runtime_api.Simulator(runtime_api.digest_params(params))
     scan = np.asarray(simulator.process(warmup_image), dtype=np.float32)
+    if _cancel_warmup.is_set():
+        return
 
     # Force the display path once as part of startup so the first preview avoids lazy import/setup cost.
     controller_runtime.prepare_output_display_image(
@@ -179,11 +193,70 @@ def _start_background_warmup(
     pool.start(task_factory())
 
 
+def stop_background_warmup() -> None:
+    """Drop queued warmup work and stop waiting on the pool."""
+    _cancel_warmup.set()
+    pool = _background_warmup_pool
+    if pool is None:
+        return
+    clear = getattr(pool, 'clear', None)
+    if callable(clear):
+        clear()
+    wait = getattr(pool, 'waitForDone', None)
+    if not callable(wait):
+        return
+    try:
+        wait(200)
+    except TypeError:
+        return
+
+
+def non_daemon_threads() -> list[str]:
+    names: list[str] = []
+    for thread in threading.enumerate():
+        if thread is threading.main_thread() or not thread.is_alive() or thread.daemon:
+            continue
+        names.append(thread.name)
+    return names
+
+
+def request_shutdown() -> None:
+    """Stop background work and leave the Qt event loop.
+
+    Closing the Spektrafilm window has to end the process. napari's own
+    top-level shell and a running warmup used to keep the loop, or a
+    non-daemon thread, alive after the window was gone.
+    """
+    global _shutdown_requested
+    if _shutdown_requested:
+        return
+    _shutdown_requested = True
+    stop_background_warmup()
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return
+    set_quit = getattr(app, 'setQuitOnLastWindowClosed', None)
+    if callable(set_quit):
+        set_quit(True)
+    for widget in list(app.topLevelWidgets()):
+        set_attribute = getattr(widget, 'setAttribute', None)
+        if callable(set_attribute):
+            set_attribute(QtCore.Qt.WA_QuitOnClose, False)
+        hide = getattr(widget, 'hide', None)
+        if callable(hide):
+            hide()
+    quit_app = getattr(app, 'quit', None)
+    if callable(quit_app):
+        quit_app()
+
+
 def _schedule_background_warmup(
     *,
     single_shot_fn: Callable[[int, Callable[[], None]], None] | None = None,
 ) -> None:
     global _background_warmup_scheduled
+    if os.environ.get('SPEKTRAFILM_SKIP_WARMUP') == '1':
+        return
     if _background_warmup_started or _background_warmup_scheduled:
         return
     _background_warmup_scheduled = True
@@ -302,14 +375,61 @@ def create_app() -> GuiApp:
         main_window=main_window,
     )
 
+def _finish_process() -> None:
+    stop_background_warmup()
+    lingering = non_daemon_threads()
+    if lingering:
+        print('spektrafilm: stopping lingering threads: ' + ', '.join(lingering), flush=True)
+        os._exit(0)
+
+
+def quit_check() -> None:
+    """Show the real window, fire its quit shortcut, and require a clean exit."""
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+    os.environ.setdefault('QT_API', 'pyside6')
+    os.environ.setdefault('LIBGL_ALWAYS_SOFTWARE', '1')
+    os.environ.setdefault('QT_OPENGL', 'software')
+    os.environ.setdefault('NUMBA_NUM_THREADS', '1')
+    os.environ.setdefault('PYTHONNOUSERSITE', '1')
+    os.environ.setdefault('SPEKTRAFILM_SKIP_WARMUP', '1')
+    from spektrafilm_gui.i18n import configure_napari_language
+
+    configure_napari_language()
+    napari = import_module('napari')
+    gui = create_app()
+    show_viewer_window(gui.viewer)
+    from qtpy.QtCore import QTimer
+
+    def fire_quit() -> None:
+        shortcuts = list(getattr(gui.main_window, '_quit_shortcuts', ()))
+        if not shortcuts:
+            print('QUIT_SHORTCUT_MISSING', flush=True)
+            os._exit(6)
+        shortcuts[0].activated.emit()
+
+    QTimer.singleShot(500, fire_quit)
+    QTimer.singleShot(15000, lambda: os._exit(4))
+    napari.run()
+    lingering = non_daemon_threads()
+    if lingering:
+        print('LINGERING_THREADS ' + ','.join(lingering), flush=True)
+        os._exit(5)
+    print('QUIT_OK', flush=True)
+    os._exit(0)
+
+
 def main():
     from spektrafilm_gui.i18n import configure_napari_language
 
     configure_napari_language()
     napari = import_module('napari')
     app = create_app()
+    qt_app = QtWidgets.QApplication.instance()
+    if qt_app is not None and hasattr(qt_app, 'setQuitOnLastWindowClosed'):
+        qt_app.setQuitOnLastWindowClosed(True)
     show_viewer_window(app.viewer)
     napari.run()
+    _finish_process()
 
 
 if __name__ == "__main__":

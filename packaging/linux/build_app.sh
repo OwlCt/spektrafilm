@@ -10,8 +10,12 @@ log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 log "installing Qt/system libraries"
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
-  libglib2.0-0 libgl1 libegl1 libxkbcommon0 libdbus-1-3 libfontconfig1 \
-  libxcb1 libx11-6 libxext6 libxi6 file
+  libglib2.0-0 libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 \
+  libdbus-1-3 libfontconfig1 libxcb1 libx11-6 libxext6 libxi6 \
+  libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
+  libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 \
+  libxcb-image0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
+  fonts-noto-cjk patchelf file
 
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -30,6 +34,15 @@ export MPLBACKEND=Agg
 export PYTHONNOUSERSITE=1
 
 log "building PyInstaller onedir"
+SVG_DIST="$("$ROOT/.venv/bin/python" -c 'import importlib.metadata as md
+for name in ("napari-svg", "napari_svg"):
+    try:
+        print(md.distribution(name).metadata["Name"])
+        break
+    except md.PackageNotFoundError:
+        continue
+else:
+    raise SystemExit("napari-svg is not installed")')"
 "$ROOT/.venv/bin/pyinstaller" --noconfirm --clean --onedir --name Spektrafilm \
   --add-data "packaging/macos/smoke_check.py:." \
   --add-data "src/spektrafilm_gui/assets/app_icon.png:spektrafilm_gui/assets" \
@@ -37,6 +50,13 @@ log "building PyInstaller onedir"
   --collect-all spektrafilm_gui \
   --collect-all spektrafilm_lut_creator \
   --collect-all napari \
+  --collect-all napari_builtins \
+  --collect-all napari_svg \
+  --collect-submodules napari_builtins \
+  --collect-submodules napari_svg \
+  --hidden-import napari_builtins \
+  --hidden-import napari_builtins.io \
+  --hidden-import napari_svg \
   --collect-all vispy \
   --collect-all magicgui \
   --collect-all npe2 \
@@ -52,6 +72,7 @@ log "building PyInstaller onedir"
   --collect-submodules scipy \
   --collect-submodules skimage \
   --copy-metadata napari \
+  --copy-metadata "$SVG_DIST" \
   --copy-metadata numpy \
   --copy-metadata scipy \
   --copy-metadata numba \
@@ -72,6 +93,21 @@ find dist/Spektrafilm -iname '*WebEngine*' -prune -exec rm -rf {} + || true
 find dist/Spektrafilm -iname '*Qt3D*' -prune -exec rm -rf {} + || true
 find dist/Spektrafilm -iname '*QtPdf*' -prune -exec rm -rf {} + || true
 
+log "bundling xcb, EGL, and a CJK font into the app directory"
+"$ROOT/.venv/bin/python" packaging/linux/bundle_runtime_libs.py dist/Spektrafilm
+internal="$(find "$ROOT/dist/Spektrafilm" -name base_library.zip -printf '%h\n' -quit)"
+if [[ -z "$internal" ]]; then
+  internal="$ROOT/dist/Spektrafilm/_internal"
+fi
+font_dir="$internal/fonts"
+mkdir -p "$font_dir"
+font_file="$(find /usr/share/fonts -type f \( -iname 'NotoSansCJK-Regular.ttc' -o -iname 'NotoSansCJK-Regular.otf' -o -iname 'NotoSansCJKsc-Regular.otf' \) | head -n 1)"
+if [[ -z "$font_file" ]]; then
+  echo "Noto CJK font was not installed" >&2
+  exit 1
+fi
+cp "$font_file" "$font_dir/"
+cp packaging/linux/fonts.conf "$font_dir/fonts.conf"
 cp packaging/linux/spektrafilm.desktop dist/Spektrafilm/spektrafilm.desktop
 cp src/spektrafilm_gui/assets/app_icon.png dist/Spektrafilm/spektrafilm.png
 
@@ -95,6 +131,14 @@ HERE="$(dirname "$(readlink -f "$0")")"
 export QT_API="${QT_API:-pyside6}"
 export PYTHONNOUSERSITE=1
 export PATH="$HERE/usr/bin:$PATH"
+FONTCONF="$(find "$HERE/usr/bin" -path '*/fonts/fonts.conf' -print -quit 2>/dev/null || true)"
+if [ -n "$FONTCONF" ]; then
+  export FONTCONFIG_FILE="$FONTCONF"
+fi
+QTLIB="$(find "$HERE/usr/bin" -name 'libQt6Core.so*' -print -quit 2>/dev/null || true)"
+if [ -n "$QTLIB" ]; then
+  export LD_LIBRARY_PATH="$(dirname "$QTLIB")${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 exec "$HERE/usr/bin/Spektrafilm" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
