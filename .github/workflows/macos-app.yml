@@ -1,8 +1,7 @@
-name: macOS app
+name: Desktop app
 
-# Builds a double-clickable Spektrafilm.app for Intel and Apple Silicon.
-# macos-13 (Intel) was removed in December 2025; macos-15-intel is the
-# native x86_64 hosted runner. macos-15 is Apple Silicon.
+# macOS (Intel + Apple Silicon), Windows x64, and Linux x86_64 bundles.
+# macos-13 was removed in December 2025; Intel macOS uses macos-15-intel.
 
 on:
   push:
@@ -72,9 +71,54 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+  build-windows:
+    name: windows-x64
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Windows app
+        shell: pwsh
+        run: ./packaging/windows/build_app.ps1
+
+      - name: Upload Windows archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: spektrafilm-windows-x64
+          path: |
+            dist/Spektrafilm-windows-x64.zip
+            dist/Spektrafilm-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  build-linux:
+    name: linux-x86_64
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Linux app
+        run: bash packaging/linux/build_app.sh
+
+      - name: Upload Linux archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: spektrafilm-linux-x86_64
+          path: |
+            dist/Spektrafilm-linux-x86_64.tar.gz
+            dist/Spektrafilm-linux-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
   release:
     name: GitHub Release
-    needs: build
+    needs: [build, build-windows, build-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -83,10 +127,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download app archives
+      - name: Download macOS archives
         uses: actions/download-artifact@v4
         with:
           pattern: spektrafilm-macos-*
+          merge-multiple: true
+          path: dist
+
+      - name: Download Windows archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spektrafilm-windows-*
+          merge-multiple: true
+          path: dist
+
+      - name: Download Linux archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: spektrafilm-linux-*
           merge-multiple: true
           path: dist
 
@@ -97,28 +155,31 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(dist/*.zip)
+          files=(dist/*.zip dist/*.tar.gz dist/*.AppImage dist/*.exe)
           if [[ ${#files[@]} -eq 0 ]]; then
-            echo "no zip archives to attach" >&2
+            echo "no release archives to attach" >&2
             exit 1
           fi
           ls -lh "${files[@]}"
           notes=$(printf '%s\n' \
-            'macOS 版 Spektrafilm 桌面应用。' \
+            'Spektrafilm 桌面版：macOS、Windows、Linux。' \
             '' \
-            '- 新增应用图标（胶片画格与光谱）。' \
-            '- 界面支持简体中文。系统语言为中文时默认使用简体中文，也可用环境变量 SPEKTRAFILM_LANG=zh_CN 或 en 切换。napari 自身菜单仍为英文，因为没有随 napari 0.6 发布的官方简体中文语言包。' \
-            '- 需要 macOS 14 或更高版本。' \
-            '- 应用未经 Apple 公证。首次打开请在终端执行：' \
+            '- 界面支持 English、简体中文、繁體中文。可在「介面參數 / GUI parameters」里的语言菜单切换，选择会保存，下次启动仍然有效。环境变量 SPEKTRAFILM_LANG 优先于已保存的选择，其次才是系统语言。zh_TW、zh_HK、zh_Hant 使用繁體中文；zh_CN、zh_Hans 使用简体中文。' \
+            '- napari 自身菜单仍为英文：napari 0.6 没有随附的官方中文语言包。' \
+            '- macOS 需要 14 或更高版本，应用未经公证。首次打开请执行：' \
             '' \
             '    xattr -cr /Applications/Spektrafilm.app' \
             '' \
             '  或在「系统设置 > 隐私与安全性」中选择「仍要打开」。' \
+            '- Windows 安装包和程序未签名。SmartScreen 提示时选「更多信息」>「仍要运行」。' \
+            '- Linux 提供 PyInstaller 目录的 tar.gz，以及 AppImage。' \
             '' \
             '- Spektrafilm-macos-arm64.zip：Apple 芯片' \
-            '- Spektrafilm-macos-x86_64.zip：Intel' \
+            '- Spektrafilm-macos-x86_64.zip：Intel Mac' \
+            '- Spektrafilm-windows-x64.zip / Spektrafilm-windows-x64-setup.exe：Windows x64' \
+            '- Spektrafilm-linux-x86_64.tar.gz / Spektrafilm-linux-x86_64.AppImage：Linux x86_64' \
             '' \
-            '第一次启动会改写安装路径、重新签名，并编译 Numba 内核，所以会比之后的启动慢。请先把 Spektrafilm.app 放到最终位置再打开。')
+            '第一次启动会编译 Numba 内核，所以会比之后的启动慢。')
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else

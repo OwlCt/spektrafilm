@@ -123,11 +123,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--iconset", type=Path, required=True)
     parser.add_argument("--png", type=Path, required=True)
+    parser.add_argument("--ico", type=Path)
     args = parser.parse_args()
     master = render_icon(1024)
     args.png.parent.mkdir(parents=True, exist_ok=True)
     master.save(args.png)
     write_iconset(args.iconset, master)
+    if args.ico is not None:
+        args.ico.parent.mkdir(parents=True, exist_ok=True)
+        sizes = [master.resize((size, size), Image.Resampling.LANCZOS) for size in (16, 24, 32, 48, 64, 128, 256)]
+        sizes[-1].save(args.ico, format="ICO", sizes=[(image.width, image.height) for image in sizes])
 
 
 if __name__ == "__main__":

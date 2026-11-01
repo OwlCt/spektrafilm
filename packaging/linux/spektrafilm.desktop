@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Spektrafilm
+Comment=Spectral simulation of analog film photography
+Exec=Spektrafilm
+Icon=spektrafilm
+Terminal=false
+Categories=Graphics;Photography;
+StartupWMClass=Spektrafilm

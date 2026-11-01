@@ -354,4 +354,7 @@ ZH_CN: dict[str, str] = {
     "Display transform: display profile found ({name})": "显示器变换：已找到显示器配置（{name}）",
     "Display transform: active ({name})": "显示器变换：已启用（{name}）",
     "Display transform: transform failed, using raw preview": "显示器变换：变换失败，使用原始预览",
+    "Language": "语言",
+    "SPEKTRAFILM_LANG is set and controls the interface language.": "已设置环境变量 SPEKTRAFILM_LANG，界面语言由它决定。",
+    "Interface language updated.": "界面语言已更新。",
 }

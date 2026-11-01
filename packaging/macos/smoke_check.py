@@ -7,8 +7,10 @@ Run via Spektrafilm.app/Contents/MacOS/spektrafilm --smoke
 from __future__ import annotations
 
 import os
+import platform
 import struct
 import sys
+import tempfile
 import traceback
 
 os.environ.setdefault("QT_API", "pyside6")
@@ -105,11 +107,7 @@ def check_pipeline_and_gui() -> None:
     print(f"smoke: entry {spektrafilm_gui.app.main.__name__} api {spektrafilm.runtime.api.__name__}", flush=True)
 
 
-def check_chinese_ui() -> None:
-    from pathlib import Path
-
-    os.environ["SPEKTRAFILM_LANG"] = "zh_CN"
-    from spektrafilm_gui.i18n import configure_napari_language, display_text, tr
+def _manifest_texts():
     from spektrafilm_gui.param_manifest import (
         ALL_MANIFESTS,
         DISPLAY_PANEL_FIELDS,
@@ -117,11 +115,7 @@ def check_chinese_ui() -> None:
         SIMULATION_FIELDS,
         SPECIAL_FIELDS,
     )
-    from spektrafilm_gui.widgets import create_widget_bundle
-    from qtpy.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
-    missing: list[str] = []
-    seen: set[str] = set()
     texts: list[str] = []
     for manifest in ALL_MANIFESTS:
         texts.append(manifest.title)
@@ -133,6 +127,12 @@ def check_chinese_ui() -> None:
         texts.append(spec.label or spec.leaf.replace("_", " "))
         if spec.tooltip:
             texts.append(spec.tooltip)
+    return texts
+
+
+def _coverage(texts: list[str], tr) -> tuple[int, list[str]]:
+    missing: list[str] = []
+    seen: set[str] = set()
     for text in texts:
         key = text.casefold()
         if key in seen:
@@ -140,11 +140,47 @@ def check_chinese_ui() -> None:
         seen.add(key)
         if tr(text) == text:
             missing.append(text)
-    total = len(seen)
-    print(f"smoke: manifest strings translated {total - len(missing)}/{total}", flush=True)
+    return len(seen), missing
+
+
+def check_chinese_ui() -> None:
+    from pathlib import Path
+
+    os.environ["SPEKTRAFILM_CONFIG_DIR"] = tempfile.mkdtemp(prefix="spektrafilm-i18n-")
+    os.environ["SPEKTRAFILM_LANG"] = "zh_CN"
+    from spektrafilm_gui.i18n import (
+        active_language,
+        configure_napari_language,
+        display_text,
+        reset_language_cache,
+        set_saved_language,
+        tr,
+    )
+    from spektrafilm_gui.locales.zh_CN import ZH_CN
+    from spektrafilm_gui.locales.zh_TW import ZH_TW
+
+    reset_language_cache()
+    if set(ZH_CN) != set(ZH_TW):
+        raise RuntimeError("zh_CN and zh_TW catalogs do not cover the same strings")
+    texts = _manifest_texts()
+    total, missing = _coverage(texts, tr)
+    print(f"smoke: zh_CN manifest strings translated {total - len(missing)}/{total}", flush=True)
     if missing:
-        preview = ", ".join(missing[:12])
-        raise RuntimeError(f"{len(missing)} manifest strings are still English: {preview}")
+        raise RuntimeError(f"{len(missing)} zh_CN manifest strings are still English: {', '.join(missing[:12])}")
+
+    os.environ["SPEKTRAFILM_LANG"] = "zh_TW"
+    total_tw, missing_tw = _coverage(texts, tr)
+    print(f"smoke: zh_TW manifest strings translated {total_tw - len(missing_tw)}/{total_tw}", flush=True)
+    if missing_tw:
+        raise RuntimeError(f"{len(missing_tw)} zh_TW manifest strings are still English: {', '.join(missing_tw[:12])}")
+    if tr("SAVE") != "儲存" or tr("Import RGB") != "匯入 RGB" or tr("Couplers") != "成色劑":
+        raise RuntimeError("zh_TW wording did not use Traditional terminology")
+    if tr("GUI parameters") == "界面参数":
+        raise RuntimeError("zh_TW reused a Simplified string")
+
+    os.environ["SPEKTRAFILM_LANG"] = "zh_CN"
+    from spektrafilm_gui.widgets import create_widget_bundle
+    from qtpy.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
     napari_language = configure_napari_language()
     print(
@@ -165,6 +201,33 @@ def check_chinese_ui() -> None:
         raise RuntimeError("white-balance value was translated")
     if bundle.simulation.preview_button.text() != "预览":
         raise RuntimeError(f"unexpected preview button text {bundle.simulation.preview_button.text()!r}")
+
+    os.environ.pop("SPEKTRAFILM_LANG", None)
+    reset_language_cache()
+    set_saved_language("zh_TW")
+    from spektrafilm_gui.widget_sections import GuiConfigSection, LoadRawSection
+
+    if active_language() != "zh_TW":
+        raise RuntimeError("saved language did not override the system locale")
+    traditional = LoadRawSection()
+    if traditional.reprocess_button.text() != "重新處理 RAW":
+        raise RuntimeError(f"saved zh_TW label was {traditional.reprocess_button.text()!r}")
+    os.environ["SPEKTRAFILM_LANG"] = "zh_CN"
+    if active_language() != "zh_CN":
+        raise RuntimeError("SPEKTRAFILM_LANG did not override the saved language")
+    os.environ.pop("SPEKTRAFILM_LANG", None)
+    reset_language_cache()
+    set_saved_language("en")
+    settings = GuiConfigSection()
+    if settings.save_current_as_default_button.text() != "save current as default":
+        raise RuntimeError(settings.save_current_as_default_button.text())
+    settings.language_combo.setCurrentIndex(settings.language_combo.findData("zh_TW"))
+    if settings.save_current_as_default_button.text() != "將目前設為預設":
+        raise RuntimeError(f"language switcher did not relabel: {settings.save_current_as_default_button.text()!r}")
+    if settings.language_note.isHidden():
+        raise RuntimeError("language switcher did not show the update note")
+    if active_language() != "zh_TW":
+        raise RuntimeError("switcher did not persist zh_TW")
 
     host = QWidget()
     layout = QVBoxLayout(host)
@@ -205,7 +268,7 @@ def check_chinese_ui() -> None:
 
 def main() -> None:
     print(
-        f"smoke: python {sys.version.split()[0]} machine={os.uname().machine} "
+        f"smoke: python {sys.version.split()[0]} machine={platform.machine()} "
         f"pointer={struct.calcsize('P') * 8}",
         flush=True,
     )

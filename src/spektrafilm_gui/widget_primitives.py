@@ -12,7 +12,7 @@ from spektrafilm_gui.theme_palette import (
     SIZE_SECTION_FRAME_MARGIN,
     SIZE_SECTION_STACK_SPACING,
 )
-from spektrafilm_gui.i18n import display_text
+from spektrafilm_gui.i18n import bind_text, display_text
 from spektrafilm_gui.icons import HEADER_ICON_SIZE, section_header_icon
 from spektrafilm_gui.theme import resolve_theme_qcolor
 
@@ -49,7 +49,7 @@ class CollapsibleSection(QtWidgets.QWidget):
 
         self._title_button = QtWidgets.QToolButton()
         self._title_button.setProperty('role', 'sectionToggle')
-        self._title_button.setText(normalize_ui_text(title))
+        bind_text(self._title_button, title)
         self._title_button.setAutoRaise(True)
         self._title_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         self._title_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
