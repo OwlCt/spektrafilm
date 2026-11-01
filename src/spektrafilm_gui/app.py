@@ -385,7 +385,9 @@ def _finish_process() -> None:
 
 def quit_check() -> None:
     """Show the real window, fire its quit shortcut, and require a clean exit."""
-    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+    # macOS offscreen has no OpenGL and segfaults inside napari's canvas.
+    # Callers on that platform pass QT_QPA_PLATFORM=cocoa.
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     os.environ.setdefault('QT_API', 'pyside6')
     os.environ.setdefault('LIBGL_ALWAYS_SOFTWARE', '1')
     os.environ.setdefault('QT_OPENGL', 'software')

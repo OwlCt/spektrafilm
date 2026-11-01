@@ -173,7 +173,7 @@ def check_napari_plugins() -> None:
 
 def check_window_close_exits() -> None:
     env = os.environ.copy()
-    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["QT_QPA_PLATFORM"] = "cocoa" if sys.platform == "darwin" else "offscreen"
     env["QT_API"] = "pyside6"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     env["QT_OPENGL"] = "software"
