@@ -6,9 +6,9 @@ import sys
 from typing import TYPE_CHECKING, Callable
 from typing import Any, cast
 
-from qtpy import QtGui, QtWidgets
-from qtpy.QtCore import Qt
-from qtpy.QtGui import QKeySequence, QShortcut
+from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import QEvent, QObject, Qt
+from qtpy.QtGui import QAction, QKeySequence
 
 if TYPE_CHECKING:
     import napari
@@ -539,27 +539,130 @@ def build_main_window(
     central_layout.addWidget(splitter, 1)
 
     main_window.setCentralWidget(central)
-    _install_quit_shortcuts(main_window)
+    _install_quit_action(main_window)
     _request_dark_title_bar(main_window)
     main_window.statusBar().showMessage(tr('ready'), 3000)
     return main_window
 
 
-def _install_quit_shortcuts(main_window: QMainWindow) -> None:
-    sequences = [QKeySequence('Ctrl+Q')]
+def _quit_sequences() -> list[QKeySequence]:
+    """Platform Quit, plus the literal Ctrl+Q and Cmd+Q bindings.
+
+    Offscreen Qt on Linux leaves ``QKeySequence.Quit`` empty, so a real
+    Ctrl+Q would never be installed. The portable sequences are the keys
+    a window manager actually delivers.
+    """
+    sequences: list[QKeySequence] = []
     standard = getattr(QKeySequence, 'StandardKey', None)
     if standard is not None:
-        sequences.append(QKeySequence(standard.Quit))
+        standard_sequence = QKeySequence(standard.Quit)
+        if not standard_sequence.isEmpty():
+            sequences.append(standard_sequence)
+    for text in ('Meta+Q', 'Ctrl+Q') if sys.platform == 'darwin' else ('Ctrl+Q', 'Meta+Q'):
+        sequence = QKeySequence(text)
+        if sequence.isEmpty() or sequence in sequences:
+            continue
+        sequences.append(sequence)
+    return sequences
+
+
+def _install_quit_action(main_window: QMainWindow) -> None:
+    """Bind the platform Quit shortcut to closing this window.
+
+    A QShortcut was not enough: with the viewer canvas focused, napari accepts
+    the key before that shortcut runs. A QAction on the window is the Quit
+    command, and an application event filter delivers the same key when a
+    child would otherwise swallow it.
+    """
+    action = QAction('Quit', main_window)
+    sequences = _quit_sequences()
+    if hasattr(action, 'setShortcuts'):
+        action.setShortcuts(sequences)
+    elif sequences:
+        action.setShortcut(sequences[0])
     context = getattr(Qt, 'ApplicationShortcut', None)
     if context is None:
         context = Qt.ShortcutContext.ApplicationShortcut
-    shortcuts: list[QShortcut] = []
-    for sequence in sequences:
-        shortcut = QShortcut(sequence, main_window)
-        shortcut.setContext(context)
-        shortcut.activated.connect(main_window.close)
-        shortcuts.append(shortcut)
-    setattr(main_window, '_quit_shortcuts', shortcuts)
+    action.setShortcutContext(context)
+    menu_role = getattr(QAction, 'MenuRole', None)
+    quit_role = getattr(menu_role, 'QuitRole', None) if menu_role is not None else None
+    if quit_role is not None:
+        action.setMenuRole(quit_role)
+    action.triggered.connect(lambda *_args: main_window.close())
+    main_window.addAction(action)
+    setattr(main_window, '_quit_action', action)
+
+    key_filter = _QuitKeyFilter(main_window, action)
+    setattr(main_window, '_quit_key_filter', key_filter)
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        app.installEventFilter(key_filter)
+
+    def _quit_when_destroyed(*_args: object) -> None:
+        from spektrafilm_gui.app import request_shutdown
+
+        request_shutdown()
+
+    main_window.destroyed.connect(_quit_when_destroyed)
+
+
+class _QuitKeyFilter(QObject):
+    def __init__(self, window: QMainWindow, action: QAction) -> None:
+        super().__init__(window)
+        self._action = action
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802 - Qt API name
+        del watched
+        if event.type() != QEvent.KeyPress:
+            return False
+        if bool(getattr(event, 'isAutoRepeat', lambda: False)()):
+            return False
+        if not _event_is_quit(event, self._action):
+            return False
+        # Deliver after this key event so closing the window is not nested
+        # inside QApplication.notify.
+        QtCore.QTimer.singleShot(0, self._action.trigger)
+        return True
+
+
+def _event_is_quit(event: QtCore.QEvent, action: QAction) -> bool:
+    matches = getattr(event, 'matches', None)
+    standard = getattr(QKeySequence, 'StandardKey', None)
+    if callable(matches) and standard is not None:
+        try:
+            if bool(matches(standard.Quit)):
+                return True
+        except (TypeError, AttributeError):
+            pass
+    shortcuts = list(action.shortcuts()) if hasattr(action, 'shortcuts') else [action.shortcut()]
+    for sequence in shortcuts:
+        if _event_matches_sequence(event, sequence):
+            return True
+    return False
+
+
+def _event_matches_sequence(event: QtCore.QEvent, sequence: QKeySequence) -> bool:
+    if sequence.isEmpty():
+        return False
+    try:
+        combo = sequence[0]
+    except (IndexError, TypeError):
+        return False
+    key = getattr(combo, 'key', None)
+    modifiers = getattr(combo, 'keyboardModifiers', None)
+    if not callable(key) or not callable(modifiers):
+        return False
+    event_key = getattr(event, 'key', lambda: None)()
+    event_modifiers = getattr(event, 'modifiers', lambda: Qt.NoModifier)()
+    interesting = (
+        Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier
+    )
+    try:
+        event_modifiers = event_modifiers & interesting
+        wanted = modifiers() & interesting
+    except TypeError:
+        wanted = modifiers()
+    return event_key == key() and event_modifiers == wanted
 
 
 def dialog_parent(viewer: napari.Viewer) -> QWidget | None:

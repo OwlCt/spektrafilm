@@ -15,7 +15,7 @@ sudo apt-get install -y --no-install-recommends \
   libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
   libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-randr0 \
   libxcb-image0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
-  fonts-noto-cjk patchelf file
+  fonts-noto-cjk fontconfig patchelf file
 
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -108,6 +108,33 @@ if [[ -z "$font_file" ]]; then
 fi
 cp "$font_file" "$font_dir/"
 cp packaging/linux/fonts.conf "$font_dir/fonts.conf"
+
+log "checking bundled CJK font from another working directory"
+probe="$(mktemp -d)"
+stderr_file="$probe/fc.err"
+matched="$(
+  cd /
+  FONTCONFIG_FILE="$font_dir/fonts.conf" fc-match --format '%{file}\n' zh 2>"$stderr_file" || true
+)"
+if grep -q "ambiguous path" "$stderr_file"; then
+  echo "fontconfig rejected the bundled fonts.conf" >&2
+  cat "$stderr_file" >&2
+  exit 1
+fi
+matched_real="$(readlink -f "$matched" 2>/dev/null || true)"
+font_real="$(readlink -f "$font_dir")"
+case "$matched_real" in
+  "$font_real"/*|"$font_real")
+    echo "fc-match zh -> $matched_real"
+    ;;
+  *)
+    echo "fc-match zh resolved to '${matched:-<empty>}', not a file in $font_dir" >&2
+    echo "fc-list:" >&2
+    (cd / && FONTCONFIG_FILE="$font_dir/fonts.conf" fc-list --format '%{file}\n' "Noto Sans CJK SC") >&2 || true
+    cat "$stderr_file" >&2
+    exit 1
+    ;;
+esac
 cp packaging/linux/spektrafilm.desktop dist/Spektrafilm/spektrafilm.desktop
 cp src/spektrafilm_gui/assets/app_icon.png dist/Spektrafilm/spektrafilm.png
 

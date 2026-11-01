@@ -173,7 +173,7 @@ jobs:
             '  或在「系统设置 > 隐私与安全性」中选择「仍要打开」。' \
             '- Windows 安装包和程序未签名。SmartScreen 提示时选「更多信息」>「仍要运行」。' \
             '- Linux 提供 PyInstaller 目录的 tar.gz，以及 AppImage。两者都带上了 Qt 需要的 libEGL、libGL 和 xcb 库，以及思源黑体（Noto CJK），简体和繁体中文不会显示成方框。如果仍提示缺库或中文是方框，安装：sudo apt install libegl1 libgl1 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 libxkbcommon-x11-0 fonts-noto-cjk' \
-            '- Ctrl+Q（macOS 为 Cmd+Q）或关闭窗口会退出程序。' \
+            '- Ctrl+Q（macOS 为 Cmd+Q）绑定在主窗口的退出动作上。关闭窗口，或窗口被销毁，都会退出程序。' \
             '' \
             '- Spektrafilm-macos-arm64.zip：Apple 芯片' \
             '- Spektrafilm-macos-x86_64.zip：Intel Mac' \

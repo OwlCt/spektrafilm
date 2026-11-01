@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from importlib import import_module
 import os
+import sys
 import threading
 from typing import Any, Callable, cast
 
@@ -403,11 +404,46 @@ def quit_check() -> None:
     from qtpy.QtCore import QTimer
 
     def fire_quit() -> None:
-        shortcuts = list(getattr(gui.main_window, '_quit_shortcuts', ()))
-        if not shortcuts:
-            print('QUIT_SHORTCUT_MISSING', flush=True)
+        from qtpy.QtCore import Qt
+        from qtpy.QtGui import QKeySequence
+        from qtpy.QtTest import QTest
+        from qtpy.QtWidgets import QApplication
+
+        window = gui.main_window
+        action = getattr(window, '_quit_action', None)
+        if action is None:
+            for candidate in window.actions():
+                if candidate.text() == 'Quit':
+                    action = candidate
+                    break
+        shortcuts = []
+        if action is not None:
+            shortcuts = list(action.shortcuts()) if hasattr(action, 'shortcuts') else [action.shortcut()]
+            shortcuts = [sequence for sequence in shortcuts if sequence is not None and not sequence.isEmpty()]
+        if action is None or not shortcuts:
+            described = [(candidate.text(), candidate.shortcut().toString()) for candidate in window.actions()]
+            print(f'QUIT_SHORTCUT_MISSING actions={described}', flush=True)
             os._exit(6)
-        shortcuts[0].activated.emit()
+        portable = QKeySequence('Meta+Q' if sys.platform == 'darwin' else 'Ctrl+Q')
+        sequence = next((item for item in shortcuts if item.matches(portable) or item == portable), shortcuts[0])
+        window.show()
+        window.activateWindow()
+        window.raise_()
+        focus_reason = getattr(Qt, 'OtherFocusReason', None)
+        if focus_reason is None:
+            focus_reason = Qt.FocusReason.OtherFocusReason
+        window.setFocus(focus_reason)
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            set_active = getattr(qt_app, 'setActiveWindow', None)
+            if callable(set_active):
+                set_active(window)
+            qt_app.processEvents()
+        combo = sequence[0]
+        key = combo.key()
+        modifiers = combo.keyboardModifiers()
+        print(f'QUIT_KEY key={key} modifiers={modifiers}', flush=True)
+        QTest.keyClick(window, key, modifiers)
 
     QTimer.singleShot(500, fire_quit)
     QTimer.singleShot(15000, lambda: os._exit(4))
