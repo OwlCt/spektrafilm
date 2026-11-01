@@ -545,11 +545,25 @@ def build_main_window(
     return main_window
 
 
-def _quit_sequence() -> QKeySequence:
+def _quit_sequences() -> list[QKeySequence]:
+    """Platform Quit, plus the literal Ctrl+Q and Cmd+Q bindings.
+
+    Offscreen Qt on Linux leaves ``QKeySequence.Quit`` empty, so a real
+    Ctrl+Q would never be installed. The portable sequences are the keys
+    a window manager actually delivers.
+    """
+    sequences: list[QKeySequence] = []
     standard = getattr(QKeySequence, 'StandardKey', None)
     if standard is not None:
-        return QKeySequence(standard.Quit)
-    return QKeySequence(QKeySequence.Quit)
+        standard_sequence = QKeySequence(standard.Quit)
+        if not standard_sequence.isEmpty():
+            sequences.append(standard_sequence)
+    for text in ('Meta+Q', 'Ctrl+Q') if sys.platform == 'darwin' else ('Ctrl+Q', 'Meta+Q'):
+        sequence = QKeySequence(text)
+        if sequence.isEmpty() or sequence in sequences:
+            continue
+        sequences.append(sequence)
+    return sequences
 
 
 def _install_quit_action(main_window: QMainWindow) -> None:
@@ -561,7 +575,11 @@ def _install_quit_action(main_window: QMainWindow) -> None:
     child would otherwise swallow it.
     """
     action = QAction('Quit', main_window)
-    action.setShortcut(_quit_sequence())
+    sequences = _quit_sequences()
+    if hasattr(action, 'setShortcuts'):
+        action.setShortcuts(sequences)
+    elif sequences:
+        action.setShortcut(sequences[0])
     context = getattr(Qt, 'ApplicationShortcut', None)
     if context is None:
         context = Qt.ShortcutContext.ApplicationShortcut
@@ -599,7 +617,7 @@ class _QuitKeyFilter(QObject):
             return False
         if bool(getattr(event, 'isAutoRepeat', lambda: False)()):
             return False
-        if not _event_is_quit(event, self._action.shortcut()):
+        if not _event_is_quit(event, self._action):
             return False
         # Deliver after this key event so closing the window is not nested
         # inside QApplication.notify.
@@ -607,7 +625,7 @@ class _QuitKeyFilter(QObject):
         return True
 
 
-def _event_is_quit(event: QtCore.QEvent, sequence: QKeySequence) -> bool:
+def _event_is_quit(event: QtCore.QEvent, action: QAction) -> bool:
     matches = getattr(event, 'matches', None)
     standard = getattr(QKeySequence, 'StandardKey', None)
     if callable(matches) and standard is not None:
@@ -616,6 +634,14 @@ def _event_is_quit(event: QtCore.QEvent, sequence: QKeySequence) -> bool:
                 return True
         except (TypeError, AttributeError):
             pass
+    shortcuts = list(action.shortcuts()) if hasattr(action, 'shortcuts') else [action.shortcut()]
+    for sequence in shortcuts:
+        if _event_matches_sequence(event, sequence):
+            return True
+    return False
+
+
+def _event_matches_sequence(event: QtCore.QEvent, sequence: QKeySequence) -> bool:
     if sequence.isEmpty():
         return False
     try:

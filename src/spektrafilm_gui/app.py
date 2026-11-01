@@ -404,15 +404,27 @@ def quit_check() -> None:
 
     def fire_quit() -> None:
         from qtpy.QtCore import Qt
+        from qtpy.QtGui import QKeySequence
         from qtpy.QtTest import QTest
         from qtpy.QtWidgets import QApplication
 
         window = gui.main_window
         action = getattr(window, '_quit_action', None)
-        sequence = None if action is None else action.shortcut()
-        if action is None or sequence is None or sequence.isEmpty():
-            print('QUIT_SHORTCUT_MISSING', flush=True)
+        if action is None:
+            for candidate in window.actions():
+                if candidate.text() == 'Quit':
+                    action = candidate
+                    break
+        shortcuts = []
+        if action is not None:
+            shortcuts = list(action.shortcuts()) if hasattr(action, 'shortcuts') else [action.shortcut()]
+            shortcuts = [sequence for sequence in shortcuts if sequence is not None and not sequence.isEmpty()]
+        if action is None or not shortcuts:
+            described = [(candidate.text(), candidate.shortcut().toString()) for candidate in window.actions()]
+            print(f'QUIT_SHORTCUT_MISSING actions={described}', flush=True)
             os._exit(6)
+        portable = QKeySequence('Meta+Q' if sys.platform == 'darwin' else 'Ctrl+Q')
+        sequence = next((item for item in shortcuts if item.matches(portable) or item == portable), shortcuts[0])
         window.show()
         window.activateWindow()
         window.raise_()
