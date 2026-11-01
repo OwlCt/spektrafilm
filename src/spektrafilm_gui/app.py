@@ -403,11 +403,34 @@ def quit_check() -> None:
     from qtpy.QtCore import QTimer
 
     def fire_quit() -> None:
-        shortcuts = list(getattr(gui.main_window, '_quit_shortcuts', ()))
-        if not shortcuts:
+        from qtpy.QtCore import Qt
+        from qtpy.QtTest import QTest
+        from qtpy.QtWidgets import QApplication
+
+        window = gui.main_window
+        action = getattr(window, '_quit_action', None)
+        sequence = None if action is None else action.shortcut()
+        if action is None or sequence is None or sequence.isEmpty():
             print('QUIT_SHORTCUT_MISSING', flush=True)
             os._exit(6)
-        shortcuts[0].activated.emit()
+        window.show()
+        window.activateWindow()
+        window.raise_()
+        focus_reason = getattr(Qt, 'OtherFocusReason', None)
+        if focus_reason is None:
+            focus_reason = Qt.FocusReason.OtherFocusReason
+        window.setFocus(focus_reason)
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            set_active = getattr(qt_app, 'setActiveWindow', None)
+            if callable(set_active):
+                set_active(window)
+            qt_app.processEvents()
+        combo = sequence[0]
+        key = combo.key()
+        modifiers = combo.keyboardModifiers()
+        print(f'QUIT_KEY key={key} modifiers={modifiers}', flush=True)
+        QTest.keyClick(window, key, modifiers)
 
     QTimer.singleShot(500, fire_quit)
     QTimer.singleShot(15000, lambda: os._exit(4))
