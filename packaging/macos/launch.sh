@@ -58,8 +58,12 @@ fi
 # was set explicitly.
 if [[ -z "${SPEKTRAFILM_LANG:-}" ]]; then
   apple_langs="$(defaults read -g AppleLanguages 2>/dev/null || true)"
-  case "$apple_langs" in
-    *zh-Hans*|*zh_CN*|*zh-CN*|*\"zh\"*)
+  first="$(printf '%s\n' "$apple_langs" | awk -F'\"' 'NR==2 {print $2; exit}')"
+  case "$first" in
+    zh-Hant*|zh-TW*|zh_TW*|zh-HK*|zh_HK*|zh-MO*|zh_MO*)
+      export SPEKTRAFILM_LANG=zh_TW
+      ;;
+    zh-Hans*|zh-CN*|zh_CN*|zh)
       export SPEKTRAFILM_LANG=zh_CN
       ;;
   esac

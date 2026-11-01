@@ -51,7 +51,18 @@ from spektrafilm_gui.persistence import load_dialog_dir, save_dialog_dir
 from spektrafilm_gui.theme_palette import SIZE_FOOTER_ITEM_SPACING
 from spektrafilm_gui.options import RawWhiteBalance
 from spektrafilm_gui.widget_editors import BoolEditor, EnumEditor, FloatEditor, FloatTupleEditor, IntEditor, IntTupleEditor, ProfileEnumEditor
-from spektrafilm_gui.i18n import display_text, tr
+from spektrafilm_gui.i18n import (
+    LANGUAGE_CHOICES,
+    active_language,
+    bind_placeholder,
+    bind_text,
+    bind_tooltip,
+    display_text,
+    language_locked_by_environment,
+    retranslate,
+    set_saved_language,
+    tr,
+)
 from spektrafilm_gui.widget_primitives import CollapsibleSection, normalize_ui_text as _normalize_ui_text
 
 
@@ -146,7 +157,9 @@ def _new_form_layout() -> QFormLayout:
 def _add_form_rows(form: QFormLayout, rows: list[tuple[str | QLabel, QWidget]]) -> None:
     for label, widget in rows:
         if isinstance(label, str):
-            label = _normalize_ui_text(label)
+            text = label
+            label = QLabel()
+            bind_text(label, text)
         form.addRow(label, widget)
 
 
@@ -169,31 +182,36 @@ def _build_button(
     preserve_case: bool = False,
     role: str | None = None,
 ) -> QPushButton:
-    button = QPushButton(display_text(text, preserve_case=preserve_case))
+    button = QPushButton()
+    bind_text(button, text, preserve_case=preserve_case)
     if role is not None:
         button.setProperty('role', role)
     if tooltip:
-        button.setToolTip(tr(tooltip))
+        bind_tooltip(button, tooltip)
     button.clicked.connect(callback)
     return button
+
+
+def _make_label(text: str, tooltip: str | None = None) -> QLabel:
+    label = QLabel()
+    bind_text(label, text)
+    if tooltip:
+        bind_tooltip(label, tooltip)
+    return label
 
 
 def _build_widget_label(section_name: str, field_name: str) -> QLabel:
     spec = _field_spec(section_name, field_name)
     label_text = (spec.label if spec is not None else None) or _format_label(field_name)
-    label = QLabel(_normalize_ui_text(label_text))
-    if spec is not None and spec.tooltip:
-        label.setToolTip(tr(spec.tooltip))
-    return label
+    tooltip = spec.tooltip if spec is not None else None
+    return _make_label(label_text, tooltip)
 
 
 def _build_auxiliary_label(name: str) -> QLabel:
     spec = _AUXILIARY_FIELD_SPECS.get(name)
     label_text = (spec.label if spec is not None else None) or name.replace("_", " ")
-    label = QLabel(_normalize_ui_text(label_text))
-    if spec is not None and spec.tooltip:
-        label.setToolTip(tr(spec.tooltip))
-    return label
+    tooltip = spec.tooltip if spec is not None else None
+    return _make_label(label_text, tooltip)
 
 
 def _build_button_row(*widgets: QWidget, stretch: int | None = None, spacing: int = 6) -> QHBoxLayout:
@@ -231,7 +249,7 @@ def _set_single_collapsible_layout(widget: QWidget, title: str, content: QWidget
 
 
 def _format_label(field_name: str) -> str:
-    return _normalize_ui_text(field_name.replace("_", " "))
+    return field_name.replace("_", " ")
 
 
 def _apply_numeric_attr(widget: QWidget, method_name: str, value: float | int) -> None:
@@ -316,10 +334,9 @@ def _build_path_panel(
     form = _new_form_layout()
     for spec in specs:
         editor = editors[spec.leaf]
-        label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
+        label = _make_label(spec.label or _format_label(spec.leaf), spec.tooltip or None)
         if spec.tooltip:
-            label.setToolTip(tr(spec.tooltip))
-            editor.setToolTip(tr(spec.tooltip))
+            bind_tooltip(editor, spec.tooltip)
         form.addRow(label, editor)
     return _build_collapsible_form_section(title, form, expanded=expanded)
 
@@ -372,7 +389,7 @@ class LoadRawSection(QWidget):
         self._source: LoadRawState | None = None
         self.file_path = QLineEdit()
         self.file_path.setReadOnly(True)
-        self.file_path.setPlaceholderText(_normalize_ui_text('No raw selected'))
+        bind_placeholder(self.file_path, 'No raw selected')
         self.reprocess_button = _build_button('reprocess raw', self._reprocess_raw, role='compactAction')
         self.reprocess_button.setEnabled(False)
         self._build_ui()
@@ -472,10 +489,9 @@ class ParamsGroupSection(QWidget):
         # any remaining fields are displayed by a section that borrows them.
         for spec in self._manifest.panel_fields or self._manifest.fields:
             editor = self._editors[spec.leaf]
-            label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
+            label = _make_label(spec.label or _format_label(spec.leaf), spec.tooltip or None)
             if spec.tooltip:
-                label.setToolTip(tr(spec.tooltip))
-                editor.setToolTip(tr(spec.tooltip))
+                bind_tooltip(editor, spec.tooltip)
             form.addRow(label, editor)
 
         content = QWidget()
@@ -514,9 +530,9 @@ class SpecialSection(QWidget):
         self._editors: dict[str, QWidget] = {}
         form = _new_form_layout()
         borrowed = SIMULATION_SPECIAL_BORROWED_FIELDS[0]
-        borrowed_label = QLabel(_normalize_ui_text(borrowed.label or _format_label(borrowed.leaf)))
+        borrowed_label = _make_label(borrowed.label or _format_label(borrowed.leaf), borrowed.tooltip or None)
         if borrowed.tooltip:
-            borrowed_label.setToolTip(tr(borrowed.tooltip))
+            bind_tooltip(simulation_section.print_illuminant, borrowed.tooltip)
         form.addRow(borrowed_label, simulation_section.print_illuminant)
         for spec in SPECIAL_FIELDS:
             editor = _editor_from_param_spec(_path_annotation(SpecialState, spec.path), spec, label=spec.path)
@@ -524,10 +540,9 @@ class SpecialSection(QWidget):
             setattr(self, spec.leaf, editor)
             if spec.leaf == 'film_gamma_factor':
                 continue
-            label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
+            label = _make_label(spec.label or _format_label(spec.leaf), spec.tooltip or None)
             if spec.tooltip:
-                label.setToolTip(tr(spec.tooltip))
-                editor.setToolTip(tr(spec.tooltip))
+                bind_tooltip(editor, spec.tooltip)
             form.addRow(label, editor)
         self.setLayout(_build_collapsible_form_section('Experimental', form, expanded=False))
 
@@ -572,7 +587,7 @@ class FilePickerSection(QWidget):
     def _build_ui(self) -> None:
         self.file_path = QLineEdit()
         self.file_path.setReadOnly(True)
-        self.file_path.setPlaceholderText(_normalize_ui_text('No image selected'))
+        bind_placeholder(self.file_path, 'No image selected')
 
         browse_button = _build_button('Select file', self._choose_file, role='compactAction')
         content = _build_vertical_container(_build_button_row(self.file_path, browse_button, spacing=4), spacing=6)
@@ -615,11 +630,53 @@ class GuiConfigSection(QWidget):
             self.restore_factory_default_requested.emit,
         )
 
-        content = _build_vertical_container(
+        rows: list[Any] = [
             _build_button_row(self.save_current_as_default_button, self.save_current_to_file_button),
             _build_button_row(self.load_from_file_button, self.restore_factory_default_button),
-        )
+        ]
+        if isinstance(self, QWidget):
+            rows.insert(0, self._language_row())
+        content = _build_vertical_container(*rows)
         _set_single_collapsible_layout(self, 'GUI parameters', content, expanded=True)
+
+    def _language_row(self) -> QWidget:
+        row = QWidget()
+        layout = QVBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        self.language_label = _make_label('Language')
+        self.language_combo = QComboBox()
+        for code, name in LANGUAGE_CHOICES:
+            self.language_combo.addItem(name, code)
+        current = self.language_combo.findData(active_language())
+        if current >= 0:
+            self.language_combo.setCurrentIndex(current)
+        header.addWidget(self.language_label)
+        header.addWidget(self.language_combo, 1)
+        layout.addLayout(header)
+        self.language_note = QLabel()
+        self.language_note.setWordWrap(True)
+        if language_locked_by_environment():
+            self.language_combo.setEnabled(False)
+            bind_text(self.language_note, 'SPEKTRAFILM_LANG is set and controls the interface language.', preserve_case=True)
+        else:
+            bind_text(self.language_note, 'Interface language updated.', preserve_case=True)
+            self.language_note.hide()
+            self.language_combo.currentIndexChanged.connect(self._on_language_changed)
+        layout.addWidget(self.language_note)
+        return row
+
+    def _on_language_changed(self, index: int) -> None:
+        if language_locked_by_environment():
+            return
+        code = self.language_combo.itemData(index)
+        if not isinstance(code, str) or code == active_language():
+            return
+        set_saved_language(code)
+        retranslate(self.window())
+        self.language_note.show()
 
 
 class DisplaySection(QWidget):
@@ -644,10 +701,9 @@ class DisplaySection(QWidget):
             editor = _editor_from_param_spec(_path_annotation(DisplayState, spec.path), spec, label=spec.path)
             self._editors[spec.leaf] = editor
             setattr(self, spec.leaf, editor)
-            label = QLabel(_normalize_ui_text(spec.label or _format_label(spec.leaf)))
+            label = _make_label(spec.label or _format_label(spec.leaf), spec.tooltip or None)
             if spec.tooltip:
-                label.setToolTip(tr(spec.tooltip))
-                editor.setToolTip(tr(spec.tooltip))
+                bind_tooltip(editor, spec.tooltip)
             widget: QWidget = editor
             if spec.leaf == 'preview_max_size':
                 widget = _build_vertical_container(_build_button_row(editor, self.update_preview_button, spacing=4), spacing=0)
@@ -698,7 +754,7 @@ class SimulationSection(QWidget):
         self.bottom_scan_for_print = BoolEditor()
         scan_for_print_spec = _AUXILIARY_FIELD_SPECS['scan_for_print']
         if scan_for_print_spec.tooltip:
-            self.bottom_scan_for_print.setToolTip(tr(scan_for_print_spec.tooltip))
+            bind_tooltip(self.bottom_scan_for_print, scan_for_print_spec.tooltip)
         self.bottom_scan_for_print.toggled.connect(self._apply_scan_for_print_mode)
         preview_button_spec = _SIMULATION_ACTION_BUTTON_SPECS['preview']
         self.preview_button = _build_button(

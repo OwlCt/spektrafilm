@@ -20,7 +20,7 @@ QStatusBar = QtWidgets.QStatusBar
 QScrollArea = QtWidgets.QScrollArea
 QWidget = QtWidgets.QWidget
 
-from spektrafilm_gui.i18n import display_text, tr
+from spektrafilm_gui.i18n import bind_tab, bind_text, bind_tooltip, display_text, tr
 from spektrafilm_gui.theme import APP_STYLE_SHEET
 from spektrafilm_gui.theme_palette import (
     GRAY_0,
@@ -340,35 +340,38 @@ def _build_viewer_panel(
     status_bar.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
     status_layout.addWidget(status_bar, 1)
 
-    rotate_ccw_button = QPushButton(display_text('ccw rotate'))
+    rotate_ccw_button = QPushButton()
+    bind_text(rotate_ccw_button, 'ccw rotate')
     rotate_ccw_button.setObjectName('rotateCcwButton')
     if on_rotate_ccw is not None:
         rotate_ccw_button.clicked.connect(on_rotate_ccw)
 
-    rotate_cw_button = QPushButton(display_text('cw rotate'))
+    rotate_cw_button = QPushButton()
+    bind_text(rotate_cw_button, 'cw rotate')
     rotate_cw_button.setObjectName('rotateCwButton')
     if on_rotate_cw is not None:
         rotate_cw_button.clicked.connect(on_rotate_cw)
 
     zoom_100_button = QPushButton('100%')
     zoom_100_button.setObjectName('zoom100Button')
-    zoom_100_button.setToolTip(tr('Pixel of the screen mapped 1 to 1 to the image pixel'))
+    bind_tooltip(zoom_100_button, 'Pixel of the screen mapped 1 to 1 to the image pixel')
     if on_zoom_100 is not None:
         zoom_100_button.clicked.connect(on_zoom_100)
 
     zoom_200_button = QPushButton('200%')
     zoom_200_button.setObjectName('zoom200Button')
-    zoom_200_button.setToolTip(tr('2 screen pixels mapped to 1 image pixel'))
+    bind_tooltip(zoom_200_button, '2 screen pixels mapped to 1 image pixel')
     if on_zoom_200 is not None:
         zoom_200_button.clicked.connect(on_zoom_200)
 
     zoom_400_button = QPushButton('400%')
     zoom_400_button.setObjectName('zoom400Button')
-    zoom_400_button.setToolTip(tr('4 screen pixels mapped to 1 image pixel'))
+    bind_tooltip(zoom_400_button, '4 screen pixels mapped to 1 image pixel')
     if on_zoom_400 is not None:
         zoom_400_button.clicked.connect(on_zoom_400)
 
-    home_button = QPushButton(display_text('reset view'))
+    home_button = QPushButton()
+    bind_text(home_button, 'reset view')
     home_button.setObjectName('homeViewButton')
     if on_home_view is not None:
         home_button.clicked.connect(on_home_view)
@@ -420,11 +423,14 @@ def build_controls_panel(viewer: napari.Viewer, widgets: WidgetBundle) -> QWidge
         ),
         tr('MAIN'),
     )
+    bind_tab(panel, 0, 'MAIN')
     panel.addTab(
         _wrap_scrollable(_build_controls_tab(widgets.halation, widgets.couplers, widgets.grain, widgets.camera_diffusion)),
         tr('FILM'),
     )
+    bind_tab(panel, 1, 'FILM')
     panel.addTab(_wrap_scrollable(_build_controls_tab(widgets.chemistry, widgets.glare, widgets.preflashing, widgets.enlarger_diffusion)), tr('PRINT'))
+    bind_tab(panel, 2, 'PRINT')
     panel.addTab(
         _wrap_scrollable(
             _build_controls_tab(
@@ -437,6 +443,7 @@ def build_controls_panel(viewer: napari.Viewer, widgets: WidgetBundle) -> QWidge
         ),
         tr('ADVANCED'),
     )
+    bind_tab(panel, 3, 'ADVANCED')
 
     napari_layers_content = QtWidgets.QWidget()
     napari_layers_content_layout = QtWidgets.QVBoxLayout(napari_layers_content)
@@ -457,6 +464,7 @@ def build_controls_panel(viewer: napari.Viewer, widgets: WidgetBundle) -> QWidge
         ),
         tr('CONFIG'),
     )
+    bind_tab(panel, 4, 'CONFIG')
 
     container = QtWidgets.QWidget()
     container_layout = QtWidgets.QVBoxLayout(container)
